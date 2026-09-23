@@ -235,6 +235,7 @@ img.pv{display:block;width:100%;height:auto;border-radius:10px;border:1px solid 
     <nav class="nav" aria-label="Views">
       <button type="button" class="navbtn" id="navLog" aria-current="page">Log</button>
       <button type="button" class="navbtn" id="navSet"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Settings</button>
+      <button type="button" class="navbtn" id="navInstall" hidden><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 19h16"/></svg>Install</button>
     </nav>
   </div>
   <h1 id="pageTitle">Homework Log</h1>
@@ -1558,6 +1559,56 @@ if('serviceWorker' in navigator){
     navigator.serviceWorker.register('sw.js').catch(()=>{});
   });
 }
+
+/* ============================================================
+   Install button
+   ============================================================ */
+(function(){
+  const btn = $('navInstall');
+  let deferredPrompt = null;
+
+  function isStandalone(){
+    return window.matchMedia('(display-mode: standalone)').matches
+      || window.navigator.standalone === true;
+  }
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  if(isStandalone()){
+    btn.hidden = true;
+  } else if(isIOS){
+    // iOS/iPadOS Safari never fires beforeinstallprompt — show the button
+    // and walk the user through the manual "Add to Home Screen" step.
+    btn.hidden = false;
+  }
+
+  window.addEventListener('beforeinstallprompt', (e)=>{
+    e.preventDefault();
+    deferredPrompt = e;
+    btn.hidden = false;
+  });
+
+  btn.addEventListener('click', async ()=>{
+    if(deferredPrompt){
+      btn.disabled = true;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      btn.disabled = false;
+      if(outcome === 'accepted'){ btn.hidden = true; }
+    } else if(isIOS){
+      await askConfirm('To install: tap the Share icon in Safari\u2019s toolbar, then choose "Add to Home Screen".');
+    } else {
+      toast('Open this page in Chrome or Edge to install it');
+    }
+  });
+
+  window.addEventListener('appinstalled', ()=>{
+    btn.hidden = true;
+    deferredPrompt = null;
+    toast('Homework Log installed');
+  });
+})();
 </script>
 </body>
 </html>

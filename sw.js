@@ -1,6 +1,6 @@
 // Homework Log — service worker
 // Bump this on every deploy so clients pick up the new files.
-const CACHE_VERSION = 'hwlog-v1';
+const CACHE_VERSION = 'hwlog-v2';
 const CORE_ASSETS = [
   './',
   './index.html',
