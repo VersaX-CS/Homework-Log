@@ -330,6 +330,7 @@ img.pv{display:block;width:100%;height:auto;border-radius:10px;border:1px solid 
    ============================================================ */
 const LS_KEY = 'hwlogSettings.v1';
 const LS_ENTRIES_KEY = 'hwlogEntries.v1';
+const LS_NAMES_KEY = 'hwlogClassNames.v1';
 const PALETTE = ['p0','p1','p2','p3','p4','p5','p6','p7'];
 const DAY_ORDER = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 const DAY_FULL = {Mon:'Monday',Tue:'Tuesday',Wed:'Wednesday',Thu:'Thursday',Fri:'Friday',Sat:'Saturday',Sun:'Sunday'};
@@ -399,27 +400,23 @@ function loadEntries(){
 let ENTRIES = loadEntries();
 function saveEntries(){ try{ localStorage.setItem(LS_ENTRIES_KEY, JSON.stringify(ENTRIES)); }catch(e){} }
 
-// Clean up entries for deleted classes only when explicitly deleting a class
-function cleanupDeletedClasses(){
-  const validClassIds = new Set();
-  // Build set of valid year|arm IDs from current settings
-  CFG.years.forEach(y=>{
-    y.arms.forEach(a=>{
-      validClassIds.add(`${y.id}|${a.id}`);
-    });
-  });
-  
-  const keysToDelete = [];
-  Object.keys(ENTRIES).forEach(key=>{
-    // Entry keys are like "yearId|armId_week123"
-    const classKey = key.split('_week')[0];
-    if(!validClassIds.has(classKey)) keysToDelete.push(key);
-  });
-  
-  if(keysToDelete.length > 0){
-    keysToDelete.forEach(key=>delete ENTRIES[key]);
-    saveEntries();
-  }
+/* Remembers each class's last-known year/arm name & colour, keyed by classKey.
+   Falls back to this if CFG ever loses (or desyncs from) the matching class,
+   so a logged table never regresses to a blank "Deleted class" label. */
+function loadClassNames(){
+  try{
+    const raw = localStorage.getItem(LS_NAMES_KEY);
+    const p = raw ? JSON.parse(raw) : {};
+    return (p && typeof p==='object') ? p : {};
+  }catch(e){ return {}; }
+}
+let CLASS_NAMES = loadClassNames();
+function saveClassNames(){ try{ localStorage.setItem(LS_NAMES_KEY, JSON.stringify(CLASS_NAMES)); }catch(e){} }
+function rememberClassName(k, yearName, armName, color){
+  const cur = CLASS_NAMES[k];
+  if(cur && cur.year===yearName && cur.arm===armName && cur.color===color) return;
+  CLASS_NAMES[k] = {year:yearName, arm:armName, color:color};
+  saveClassNames();
 }
 
 function visibleYears(){ return CFG.years.filter(y=>!y.hidden); }
@@ -673,9 +670,7 @@ function sectionInfo(sec){
 
 function buildText(sec){
   const {yid,aid,y,a} = sectionInfo(sec);
-  const yearName = y ? y.name : (sec.dataset.originalYearName || sec.querySelector('.yr').textContent);
-  const className = a ? a.name : (sec.dataset.originalArmName || sec.querySelector('h2').textContent);
-  const label = `${yearName} ${className}`.trim();
+  const label = `${y?y.name:sec.querySelector('.yr').textContent} ${a?a.name:sec.querySelector('h2').textContent}`.trim();
   const wk = sec._viewWeek || weekKeyFor();
   const data = (ENTRIES[classKey(yid,aid)]||{})[wk] || {};
   let out = `${label} — Homework (${weekLabel(wk)})\n\n`;
@@ -690,14 +685,17 @@ function buildText(sec){
 
 function renderSectionTable(sec){
   const {yid,aid,y,a} = sectionInfo(sec);
-  const yearName = y ? y.name : (sec.dataset.originalYearName || '');
-  const className = a ? a.name : (sec.dataset.originalArmName || 'Deleted class');
-  
-  sec.style.setProperty('--c', y ? `var(--${y.color})` : 'var(--brand)');
-  sec.querySelector('.badge').textContent = y ? shortYear(yearName) : shortYear(sec.dataset.originalYearName || '?');
-  sec.querySelector('.badge').classList.toggle('long', (y ? shortYear(yearName) : shortYear(sec.dataset.originalYearName || '?')).length>3);
-  sec.querySelector('h2').textContent = className;
-  sec.querySelector('.yr').textContent = yearName;
+  const k = classKey(yid,aid);
+  if(y && a) rememberClassName(k, y.name, a.name, y.color);
+  const remembered = CLASS_NAMES[k] || null;
+  const yName = y ? y.name : (remembered ? remembered.year : (sec.querySelector('.yr').textContent || ''));
+  const aName = a ? a.name : (remembered ? remembered.arm : (sec.querySelector('h2').textContent || 'Deleted class'));
+  const color = y ? y.color : (remembered ? remembered.color : null);
+  sec.style.setProperty('--c', color ? `var(--${color})` : 'var(--brand)');
+  sec.querySelector('.badge').textContent = shortYear(yName) || '?';
+  sec.querySelector('.badge').classList.toggle('long', (shortYear(yName)||'?').length>3);
+  sec.querySelector('h2').textContent = aName;
+  sec.querySelector('.yr').textContent = yName;
   sec.querySelector('.restore').hidden = !!a;
   if(a) sec.querySelector('.restore-panel').hidden = true;
 
@@ -814,12 +812,6 @@ function makeSection(yearId, armId){
   const sec=document.createElement('section');
   sec.className='log';
   sec.dataset.key=key(yearId,armId); sec.dataset.yearId=yearId; sec.dataset.armId=armId;
-  // Store original class and year names so they persist even if deleted
-  // Search all years including hidden ones to find the names
-  const year = CFG.years.find(y=>y.id===yearId);
-  const arm = year ? year.arms.find(a=>a.id===armId) : null;
-  sec.dataset.originalYearName = year ? year.name : 'Unknown Year';
-  sec.dataset.originalArmName = arm ? arm.name : 'Unknown Class';
   sec._viewWeek = weekKeyFor();
   sec.innerHTML=`
     <div class="log-head">
@@ -959,9 +951,7 @@ function dayEntryLines(ctx, list, maxWidth){
 
 function drawSectionCanvas(sec){
   const {yid,aid,y,a} = sectionInfo(sec);
-  const yearName = y ? y.name : (sec.dataset.originalYearName || sec.querySelector('.yr').textContent);
-  const className = a ? a.name : (sec.dataset.originalArmName || sec.querySelector('h2').textContent);
-  const title = `${yearName} ${className}`.trim();
+  const title = `${y?y.name:sec.querySelector('.yr').textContent} ${a?a.name:sec.querySelector('h2').textContent}`.trim();
   const wk = sec._viewWeek || weekKeyFor();
   const data = (ENTRIES[classKey(yid,aid)]||{})[wk] || {};
 
@@ -1211,7 +1201,7 @@ function renderClassSettings(){
     delYearBtn.textContent='×';
     delYearBtn.addEventListener('click', async ()=>{
       if(!(await askConfirm(`Remove "${y.name}" and all its classes from the class list? Their logged homework keeps showing in the log exactly as before — you can bring the year back any time from "Removed classes" below.`))) return;
-      y.hidden = true; saveSettings(); cleanupDeletedClasses(); renderSettings(); renderPickers();
+      y.hidden = true; saveSettings(); renderSettings(); renderPickers();
       [...tablesEl.children].forEach(renderSectionTable);
     });
     head.append(nameInp, delYearBtn); card.appendChild(head);
@@ -1232,7 +1222,7 @@ function renderClassSettings(){
       const x=document.createElement('button'); x.type='button'; x.textContent='×'; x.setAttribute('aria-label','Remove '+a.name);
       x.addEventListener('click', async ()=>{
         if(!(await askConfirm(`Remove class "${a.name}" from ${y.name}? Its logged homework keeps showing in the log exactly as before — you can bring it back any time from "Removed classes" below.`))) return;
-        a.hidden = true; saveSettings(); cleanupDeletedClasses(); renderSettings(); renderPickers();
+        a.hidden = true; saveSettings(); renderSettings(); renderPickers();
         [...tablesEl.children].forEach(renderSectionTable);
       });
       tag.appendChild(x); grid.appendChild(tag);
