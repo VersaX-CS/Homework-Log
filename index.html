@@ -673,7 +673,9 @@ function sectionInfo(sec){
 
 function buildText(sec){
   const {yid,aid,y,a} = sectionInfo(sec);
-  const label = `${y?y.name:sec.querySelector('.yr').textContent} ${a?a.name:sec.querySelector('h2').textContent}`.trim();
+  const yearName = y ? y.name : (sec.dataset.originalYearName || sec.querySelector('.yr').textContent);
+  const className = a ? a.name : (sec.dataset.originalArmName || sec.querySelector('h2').textContent);
+  const label = `${yearName} ${className}`.trim();
   const wk = sec._viewWeek || weekKeyFor();
   const data = (ENTRIES[classKey(yid,aid)]||{})[wk] || {};
   let out = `${label} — Homework (${weekLabel(wk)})\n\n`;
@@ -688,11 +690,14 @@ function buildText(sec){
 
 function renderSectionTable(sec){
   const {yid,aid,y,a} = sectionInfo(sec);
+  const yearName = y ? y.name : (sec.dataset.originalYearName || '');
+  const className = a ? a.name : (sec.dataset.originalArmName || 'Deleted class');
+  
   sec.style.setProperty('--c', y ? `var(--${y.color})` : 'var(--brand)');
-  sec.querySelector('.badge').textContent = y ? shortYear(y.name) : '?';
-  sec.querySelector('.badge').classList.toggle('long', (y?shortYear(y.name):'?').length>3);
-  sec.querySelector('h2').textContent = a ? a.name : (sec.querySelector('h2').textContent || 'Deleted class');
-  sec.querySelector('.yr').textContent = y ? y.name : (sec.querySelector('.yr').textContent || '');
+  sec.querySelector('.badge').textContent = y ? shortYear(yearName) : shortYear(sec.dataset.originalYearName || '?');
+  sec.querySelector('.badge').classList.toggle('long', (y ? shortYear(yearName) : shortYear(sec.dataset.originalYearName || '?')).length>3);
+  sec.querySelector('h2').textContent = className;
+  sec.querySelector('.yr').textContent = yearName;
   sec.querySelector('.restore').hidden = !!a;
   if(a) sec.querySelector('.restore-panel').hidden = true;
 
@@ -809,6 +814,12 @@ function makeSection(yearId, armId){
   const sec=document.createElement('section');
   sec.className='log';
   sec.dataset.key=key(yearId,armId); sec.dataset.yearId=yearId; sec.dataset.armId=armId;
+  // Store original class and year names so they persist even if deleted
+  // Search all years including hidden ones to find the names
+  const year = CFG.years.find(y=>y.id===yearId);
+  const arm = year ? year.arms.find(a=>a.id===armId) : null;
+  sec.dataset.originalYearName = year ? year.name : 'Unknown Year';
+  sec.dataset.originalArmName = arm ? arm.name : 'Unknown Class';
   sec._viewWeek = weekKeyFor();
   sec.innerHTML=`
     <div class="log-head">
@@ -948,7 +959,9 @@ function dayEntryLines(ctx, list, maxWidth){
 
 function drawSectionCanvas(sec){
   const {yid,aid,y,a} = sectionInfo(sec);
-  const title = `${y?y.name:sec.querySelector('.yr').textContent} ${a?a.name:sec.querySelector('h2').textContent}`.trim();
+  const yearName = y ? y.name : (sec.dataset.originalYearName || sec.querySelector('.yr').textContent);
+  const className = a ? a.name : (sec.dataset.originalArmName || sec.querySelector('h2').textContent);
+  const title = `${yearName} ${className}`.trim();
   const wk = sec._viewWeek || weekKeyFor();
   const data = (ENTRIES[classKey(yid,aid)]||{})[wk] || {};
 
