@@ -399,40 +399,21 @@ function loadEntries(){
 let ENTRIES = loadEntries();
 function saveEntries(){ try{ localStorage.setItem(LS_ENTRIES_KEY, JSON.stringify(ENTRIES)); }catch(e){} }
 
-// Clean up orphaned entries for deleted classes immediately after loading
-function cleanupDeletedClassesOnLoad(){
-  const validClassKeys = new Set();
-  CFG.years.forEach(y=>{
-    CFG.subjects.forEach(s=>{
-      if(CFG[`cls_${y}_${s}`]) CFG[`cls_${y}_${s}`].forEach(c=>validClassKeys.add(`${y}|${s}|${c.name}`));
-    });
-  });
-  
-  let hasChanges = false;
-  Object.keys(ENTRIES).forEach(key=>{
-    const classKey = key.split('_week')[0];
-    if(!validClassKeys.has(classKey)){
-      delete ENTRIES[key];
-      hasChanges = true;
-    }
-  });
-  
-  if(hasChanges) saveEntries();
-}
-
-// Clean up entries for deleted classes to prevent them from reappearing
+// Clean up entries for deleted classes only when explicitly deleting a class
 function cleanupDeletedClasses(){
-  const validClassKeys = new Set();
+  const validClassIds = new Set();
+  // Build set of valid year|arm IDs from current settings
   CFG.years.forEach(y=>{
-    CFG.subjects.forEach(s=>{
-      if(CFG[`cls_${y}_${s}`]) CFG[`cls_${y}_${s}`].forEach(c=>validClassKeys.add(`${y}|${s}|${c.name}`));
+    y.arms.forEach(a=>{
+      validClassIds.add(`${y.id}|${a.id}`);
     });
   });
   
   const keysToDelete = [];
   Object.keys(ENTRIES).forEach(key=>{
+    // Entry keys are like "yearId|armId_week123"
     const classKey = key.split('_week')[0];
-    if(!validClassKeys.has(classKey)) keysToDelete.push(key);
+    if(!validClassIds.has(classKey)) keysToDelete.push(key);
   });
   
   if(keysToDelete.length > 0){
@@ -1591,7 +1572,6 @@ document.querySelectorAll('#viewSet > details.sec').forEach(d=>{
 /* ============================================================
    Boot
    ============================================================ */
-cleanupDeletedClassesOnLoad();
 showView('log');
 restoreSectionsFromStorage();
 onClassChange();
