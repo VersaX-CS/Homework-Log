@@ -399,6 +399,48 @@ function loadEntries(){
 let ENTRIES = loadEntries();
 function saveEntries(){ try{ localStorage.setItem(LS_ENTRIES_KEY, JSON.stringify(ENTRIES)); }catch(e){} }
 
+// Clean up orphaned entries for deleted classes immediately after loading
+function cleanupDeletedClassesOnLoad(){
+  const validClassKeys = new Set();
+  CFG.years.forEach(y=>{
+    CFG.subjects.forEach(s=>{
+      if(CFG[`cls_${y}_${s}`]) CFG[`cls_${y}_${s}`].forEach(c=>validClassKeys.add(`${y}|${s}|${c.name}`));
+    });
+  });
+  
+  let hasChanges = false;
+  Object.keys(ENTRIES).forEach(key=>{
+    const classKey = key.split('_week')[0];
+    if(!validClassKeys.has(classKey)){
+      delete ENTRIES[key];
+      hasChanges = true;
+    }
+  });
+  
+  if(hasChanges) saveEntries();
+}
+
+// Clean up entries for deleted classes to prevent them from reappearing
+function cleanupDeletedClasses(){
+  const validClassKeys = new Set();
+  CFG.years.forEach(y=>{
+    CFG.subjects.forEach(s=>{
+      if(CFG[`cls_${y}_${s}`]) CFG[`cls_${y}_${s}`].forEach(c=>validClassKeys.add(`${y}|${s}|${c.name}`));
+    });
+  });
+  
+  const keysToDelete = [];
+  Object.keys(ENTRIES).forEach(key=>{
+    const classKey = key.split('_week')[0];
+    if(!validClassKeys.has(classKey)) keysToDelete.push(key);
+  });
+  
+  if(keysToDelete.length > 0){
+    keysToDelete.forEach(key=>delete ENTRIES[key]);
+    saveEntries();
+  }
+}
+
 function visibleYears(){ return CFG.years.filter(y=>!y.hidden); }
 function visibleArms(y){ return (y ? y.arms : []).filter(a=>!a.hidden); }
 
@@ -1175,7 +1217,7 @@ function renderClassSettings(){
     delYearBtn.textContent='×';
     delYearBtn.addEventListener('click', async ()=>{
       if(!(await askConfirm(`Remove "${y.name}" and all its classes from the class list? Their logged homework keeps showing in the log exactly as before — you can bring the year back any time from "Removed classes" below.`))) return;
-      y.hidden = true; saveSettings(); renderSettings(); renderPickers();
+      y.hidden = true; saveSettings(); cleanupDeletedClasses(); renderSettings(); renderPickers();
       [...tablesEl.children].forEach(renderSectionTable);
     });
     head.append(nameInp, delYearBtn); card.appendChild(head);
@@ -1196,7 +1238,7 @@ function renderClassSettings(){
       const x=document.createElement('button'); x.type='button'; x.textContent='×'; x.setAttribute('aria-label','Remove '+a.name);
       x.addEventListener('click', async ()=>{
         if(!(await askConfirm(`Remove class "${a.name}" from ${y.name}? Its logged homework keeps showing in the log exactly as before — you can bring it back any time from "Removed classes" below.`))) return;
-        a.hidden = true; saveSettings(); renderSettings(); renderPickers();
+        a.hidden = true; saveSettings(); cleanupDeletedClasses(); renderSettings(); renderPickers();
         [...tablesEl.children].forEach(renderSectionTable);
       });
       tag.appendChild(x); grid.appendChild(tag);
@@ -1549,6 +1591,7 @@ document.querySelectorAll('#viewSet > details.sec').forEach(d=>{
 /* ============================================================
    Boot
    ============================================================ */
+cleanupDeletedClassesOnLoad();
 showView('log');
 restoreSectionsFromStorage();
 onClassChange();
